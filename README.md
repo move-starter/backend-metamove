@@ -261,13 +261,49 @@ node src/examples/agentExample.js
 ## Development
 
 ### Testing
-```bash
-# Run all tests
-npm test
 
-# Run specific tests
-npm test -- --testPathPattern=aptosService
+The MetaMove backend includes comprehensive test suites for various functionalities:
+
+- Authentication (user registration, login, profile)
+- Wallet operations (balance checking, deposits, withdrawals)
+- LLM Agent interactions (creating agents, sending messages, managing conversation history)
+
+### Running Tests
+
+To run the test suite:
+
+```bash
+npm test
 ```
+
+To run tests with watch mode (automatically re-run tests when files change):
+
+```bash
+npm run test:watch
+```
+
+To generate test coverage reports:
+
+```bash
+npm run test:coverage
+```
+
+### Test Structure
+
+Tests are organized in the `src/tests` directory:
+
+- `auth.test.js` - Tests for authentication functionality
+- `wallet.test.js` - Tests for wallet operations
+- `llmAgent.test.js` - Tests for AI agent interactions
+
+### Writing New Tests
+
+When adding new features, please include appropriate test coverage. Follow these guidelines:
+
+1. Create a new test file in the `src/tests` directory if testing a new module
+2. Use descriptive test names that explain the expected behavior
+3. Set up any required test data in the test file
+4. Clean up after tests to ensure test isolation
 
 ### Linting
 ```bash
