@@ -13,6 +13,7 @@ A robust backend service for blockchain integration with the Aptos network, prov
 - **Token Transfers**: Transfer tokens to other addresses
 - **Transaction History**: Retrieve transaction details
 - **AI Agent Integration**: Interact with the blockchain through an AI-powered agent using LangChain
+- **User-Specific Agents**: Each user has their own dedicated blockchain agent
 
 ## Prerequisites
 
@@ -137,25 +138,29 @@ console.log('Signature valid:', isValid);
 
 ### Using the AI Agent API
 
-The agent API allows for interacting with the blockchain through natural language:
+The agent API allows for interacting with the blockchain through natural language, with each user having their own dedicated agent:
 
 ```javascript
-// Initialize the agent with a private key
+// Initialize the agent with a private key for a specific user
 const response = await fetch('http://localhost:3001/api/agent/initialize', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json'
   },
-  body: JSON.stringify({ privateKey: 'your-private-key' })
+  body: JSON.stringify({ 
+    privateKey: 'your-private-key',
+    userId: 'unique-user-id'
+  })
 });
 
-// Send a message to the agent
+// Send a message to the user's agent
 const messageResponse = await fetch('http://localhost:3001/api/agent/message', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
+    userId: 'unique-user-id',
     messages: [
       {
         role: 'user',
@@ -165,9 +170,19 @@ const messageResponse = await fetch('http://localhost:3001/api/agent/message', {
   })
 });
 
-// Check agent status
-const statusResponse = await fetch('http://localhost:3001/api/agent/status', {
+// Check agent status for a specific user
+const statusResponse = await fetch('http://localhost:3001/api/agent/status/unique-user-id', {
   method: 'GET'
+});
+
+// List all user agents (admin function)
+const allAgentsResponse = await fetch('http://localhost:3001/api/agent/admin/all', {
+  method: 'GET'
+});
+
+// Remove a user's agent
+const removeResponse = await fetch('http://localhost:3001/api/agent/unique-user-id', {
+  method: 'DELETE'
 });
 ```
 
@@ -195,9 +210,11 @@ node src/examples/agentExample.js
 - `POST /api/wallet/transfer` - Send a transaction
 
 ### Agent API
-- `POST /api/agent/initialize` - Initialize the blockchain agent with a private key
-- `POST /api/agent/message` - Send a message to the AI agent and get a response
-- `GET /api/agent/status` - Check the status of the agent
+- `POST /api/agent/initialize` - Initialize the blockchain agent with a private key for a specific user
+- `POST /api/agent/message` - Send a message to the user's AI agent and get a response
+- `GET /api/agent/status/:userId` - Check the status of a user's agent
+- `GET /api/agent/admin/all` - List all user agents (admin function)
+- `DELETE /api/agent/:userId` - Remove an agent for a specific user
 
 ### Assistant
 - `POST /api/assistant/create` - Create a new AI assistant
