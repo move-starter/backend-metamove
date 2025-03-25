@@ -5,8 +5,13 @@ import {
     Ed25519PrivateKey,
     Account,
     Ed25519PublicKey,
-    Ed25519Signature
+    Ed25519Signature,
+    PrivateKey
 } from '@aptos-labs/ts-sdk';
+import { AgentRuntime, LocalSigner } from 'move-agent-kit';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 /**
  * Service for interacting with the Aptos blockchain
@@ -17,9 +22,34 @@ class AptosService {
      * Initialize the Aptos service with default configuration
      */
     constructor() {
-        // Initialize with Aptos devnet
-        this.config = new AptosConfig({ network: Network.DEVNET });
-        this.client = new Aptos(this.config);
+        // Initialize with Aptos mainnet
+        this.config = new AptosConfig({ network: Network.MAINNET });
+        this.aptos = new Aptos(this.config);
+        this.agent = null;
+    }
+
+    /**
+     * Initialize the Agent Runtime with a user's private key
+     * @param {string} privateKeyStr - The private key as a string
+     * @returns {Promise<AgentRuntime>} The initialized agent runtime
+     */
+    async initializeAgent(privateKeyStr) {
+        try {
+            // Create an account from the private key
+            const privateKey = new Ed25519PrivateKey(privateKeyStr);
+            const account = Account.fromPrivateKey({ privateKey });
+            
+            // Create a signer from the account
+            const signer = new LocalSigner(account);
+            
+            // Initialize the agent runtime
+            this.agent = new AgentRuntime(signer, this.aptos);
+            
+            return this.agent;
+        } catch (error) {
+            console.error('Error initializing agent:', error);
+            throw new Error(`Failed to initialize agent: ${error.message}`);
+        }
     }
 
     /**
@@ -36,7 +66,7 @@ class AptosService {
         }
         
         try {
-            const accountInfo = await this.client.getAccountInfo({ accountAddress: address });
+            const accountInfo = await this.aptos.getAccountInfo({ accountAddress: address });
             const publicKey = new Ed25519PublicKey(accountInfo.authentication_key);
             return publicKey.verifySignature({
                 message,
@@ -55,6 +85,10 @@ class AptosService {
     async createUserWallet() {
         try {
             const account = Account.generate();
+            
+            // Initialize agent for the new account
+            await this.initializeAgent(account.privateKey.toString());
+            
             return {
                 address: account.accountAddress.toString(),
                 privateKey: account.privateKey.toString()
@@ -66,14 +100,19 @@ class AptosService {
     }
 
     /**
-     * Gets a user account from storage
-     * @param {string} userId - User ID to retrieve account for
+     * Gets a user account from the provided private key
+     * @param {string} privateKeyStr - The private key as a string
      * @returns {Promise<Account>} Aptos account
      */
-    async getUserAccount(userId) {
+    async getUserAccount(privateKeyStr) {
         try {
-            const privateKey = await this.getPrivateKeyFromStorage(userId);
-            return Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(privateKey) });
+            const privateKey = new Ed25519PrivateKey(privateKeyStr);
+            const account = Account.fromPrivateKey({ privateKey });
+            
+            // Initialize agent for this account
+            await this.initializeAgent(privateKeyStr);
+            
+            return account;
         } catch (error) {
             console.error('Error getting user account:', error);
             throw new Error('Failed to retrieve user account');
@@ -92,11 +131,17 @@ class AptosService {
         }
 
         try {
-            const accountResource = await this.client.getAccountResource({
-                accountAddress: address,
-                resourceType: "0x1::coin::CoinStore<0x1::aptos_coin::AptosCoin>"
+            // Ensure agent is initialized
+            if (!this.agent) {
+                throw new Error('Agent not initialized. Call initializeAgent first.');
+            }
+            
+            // Get balance using agent
+            const balance = await this.agent.aptos.getAccountAPTAmount({
+                accountAddress: address
             });
-            return accountResource.data.coin.value;
+            
+            return balance.toString();
         } catch (error) {
             console.error('Error getting account balance:', error);
             if (error.message.includes('Resource not found')) {
@@ -107,56 +152,140 @@ class AptosService {
     }
 
     /**
-     * Sends a transaction on the Aptos blockchain
-     * @param {string} fromAddress - Sender address
+     * Gets token balance for a specific token
+     * @param {string} address - Address to check balance
+     * @param {string} tokenType - Token type/mint (optional)
+     * @returns {Promise<string>} Token balance
+     */
+    async getTokenBalance(address, tokenType = null) {
+        if (!address) {
+            throw new Error('Address is required to check token balance');
+        }
+
+        try {
+            // Ensure agent is initialized
+            if (!this.agent) {
+                throw new Error('Agent not initialized. Call initializeAgent first.');
+            }
+            
+            let balance;
+            
+            if (tokenType) {
+                if (tokenType.split('::').length === 3) {
+                    // This is a coin type
+                    balance = await this.agent.aptos.getAccountCoinAmount({
+                        accountAddress: address,
+                        coinType: tokenType
+                    });
+                } else {
+                    // This is a fungible asset
+                    const balances = await this.agent.aptos.getCurrentFungibleAssetBalances({
+                        options: {
+                            where: {
+                                owner_address: { _eq: address },
+                                asset_type: { _eq: tokenType }
+                            }
+                        }
+                    });
+                    
+                    balance = balances.length > 0 ? balances[0].amount : 0;
+                }
+            } else {
+                // Default to APT
+                balance = await this.agent.aptos.getAccountAPTAmount({
+                    accountAddress: address
+                });
+            }
+            
+            return balance.toString();
+        } catch (error) {
+            console.error('Error getting token balance:', error);
+            return '0'; // Return zero balance on error
+        }
+    }
+
+    /**
+     * Transfers tokens to a recipient address
+     * @param {string} toAddress - Recipient address
+     * @param {number|string} amount - Amount to transfer
+     * @param {string} tokenType - Token type (optional, defaults to APT)
+     * @returns {Promise<string>} Transaction hash
+     */
+    async transferTokens(toAddress, amount, tokenType = null) {
+        // Input validation
+        if (!toAddress || !amount) {
+            throw new Error('Recipient address and amount are required');
+        }
+        
+        if (parseFloat(amount) <= 0) {
+            throw new Error('Amount must be greater than zero');
+        }
+        
+        try {
+            // Ensure agent is initialized
+            if (!this.agent) {
+                throw new Error('Agent not initialized. Call initializeAgent first.');
+            }
+            
+            let txResult;
+            
+            if (tokenType) {
+                // Transfer specific token
+                txResult = await this.agent.transferToken(toAddress, parseFloat(amount), tokenType);
+            } else {
+                // Transfer APT
+                txResult = await this.agent.transferTokens(toAddress, parseFloat(amount));
+            }
+            
+            return txResult.hash;
+        } catch (error) {
+            console.error('Error transferring tokens:', error);
+            throw new Error(`Token transfer failed: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Gets transaction details
+     * @param {string} txHash - Transaction hash
+     * @returns {Promise<object>} Transaction details
+     */
+    async getTransactionDetails(txHash) {
+        if (!txHash) {
+            throw new Error('Transaction hash is required');
+        }
+        
+        try {
+            // Ensure agent is initialized
+            if (!this.agent) {
+                // We can use the Aptos client directly if agent is not initialized
+                return await this.aptos.getTransactionByHash({
+                    transactionHash: txHash
+                });
+            }
+            
+            return await this.agent.aptos.getTransactionByHash({
+                transactionHash: txHash
+            });
+        } catch (error) {
+            console.error('Error getting transaction details:', error);
+            throw new Error(`Failed to retrieve transaction details: ${error.message}`);
+        }
+    }
+
+    /**
+     * Legacy method for sending transactions for backward compatibility
+     * @param {string} fromPrivateKey - Sender's private key
      * @param {string} toAddress - Recipient address
      * @param {string} amount - Amount to send
      * @returns {Promise<string>} Transaction hash
      */
-    async sendTransaction(fromAddress, toAddress, amount) {
-        // Validate parameters
-        if (!fromAddress || !toAddress || !amount) {
-            throw new Error('Missing required parameters for transaction');
-        }
-        
-        // Validate amount format
-        if (isNaN(parseInt(amount))) {
-            throw new Error('Amount must be a valid number');
-        }
-        
-        // Check if amount is positive
-        if (parseInt(amount) <= 0) {
-            throw new Error('Amount must be greater than zero');
-        }
-
+    async sendTransaction(fromPrivateKey, toAddress, amount) {
         try {
-            const account = await this.getUserAccount(fromAddress);
+            // Initialize agent with sender's private key
+            await this.initializeAgent(fromPrivateKey);
             
-            // 1. Build the transaction
-            const transaction = await this.client.transaction.build.simple({
-                sender: account.accountAddress,
-                data: {
-                    function: "0x1::coin::transfer",
-                    typeArguments: ["0x1::aptos_coin::AptosCoin"],
-                    functionArguments: [toAddress, amount]
-                }
-            });
-
-            // 2. Sign the transaction
-            const senderAuthenticator = await this.client.transaction.sign({
-                signer: account,
-                transaction
-            });
-
-            // 3. Submit the transaction
-            const submittedTx = await this.client.transaction.submit.simple({
-                transaction,
-                senderAuthenticator
-            });
-
-            // 4. Wait for transaction to be confirmed with timeout
-            const confirmedTx = await this.waitForTransactionWithRetry(submittedTx.hash);
-            return confirmedTx.hash;
+            // Use the new transferTokens method
+            return await this.transferTokens(toAddress, amount);
         } catch (error) {
             console.error('Error sending transaction:', error);
             throw new Error(`Transaction failed: ${error.message}`);
@@ -164,35 +293,18 @@ class AptosService {
     }
 
     /**
-     * Waits for a transaction with retry logic
-     * @param {string} hash - Transaction hash
-     * @param {number} maxRetries - Maximum number of retries
-     * @param {number} timeout - Timeout in milliseconds
-     * @returns {Promise<object>} Transaction result
+     * Initializes an agent with the user's private key
+     * @param {string} userId - User ID
+     * @returns {Promise<AgentRuntime>} Initialized agent
      */
-    async waitForTransactionWithRetry(hash, maxRetries = 5, timeout = 10000) {
-        if (!hash) {
-            throw new Error('Transaction hash is required');
+    async initializeAgentForUser(userId) {
+        try {
+            const privateKey = await this.getPrivateKeyFromStorage(userId);
+            return await this.initializeAgent(privateKey);
+        } catch (error) {
+            console.error('Error initializing agent for user:', error);
+            throw new Error(`Failed to initialize agent for user: ${error.message}`);
         }
-        
-        let retries = 0;
-        while (retries < maxRetries) {
-            try {
-                const result = await Promise.race([
-                    this.client.waitForTransaction({ transactionHash: hash }),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Transaction timeout')), timeout)
-                    )
-                ]);
-                return result;
-            } catch (error) {
-                retries++;
-                console.warn(`Transaction wait retry ${retries}/${maxRetries}`);
-                if (retries >= maxRetries) throw error;
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s between retries
-            }
-        }
-        throw new Error('Transaction confirmation failed after maximum retries');
     }
 
     /**

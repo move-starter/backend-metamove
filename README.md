@@ -4,18 +4,20 @@ A robust backend service for blockchain integration with the Aptos network, prov
 
 ## Features
 
-- **Blockchain Integration**: Seamless interaction with Aptos blockchain
+- **Blockchain Integration**: Seamless interaction with Aptos blockchain using move-agent-kit
 - **Wallet Management**: Create and manage blockchain wallets
 - **Transaction Processing**: Build, sign, and submit transactions
 - **Signature Verification**: Verify signatures using cryptographic methods
 - **Account Management**: Check balances and manage user accounts
 - **Secure Key Storage**: Secure handling of private keys
+- **Token Transfers**: Transfer tokens to other addresses
+- **Transaction History**: Retrieve transaction details
 
 ## Prerequisites
 
 - Node.js (v16 or higher)
 - MongoDB
-- Aptos Devnet Account (for testing)
+- Aptos Mainnet Account (for interacting with the blockchain)
 - OpenAI API Key (for AI assistant features)
 
 ## Installation
@@ -42,7 +44,7 @@ cp .env.example .env
 PORT=3001
 MONGODB_URI=mongodb://localhost:27017/metamove
 JWT_SECRET=your_jwt_secret
-APTOS_NODE_URL=https://fullnode.devnet.aptoslabs.com/v1
+APTOS_NODE_URL=https://fullnode.mainnet.aptoslabs.com/v1
 OPENAI_API_KEY=your_openai_api_key
 # For development only
 NODE_ENV=development
@@ -61,8 +63,9 @@ backend/
 │   ├── models/           # MongoDB models
 │   ├── routes/           # API routes
 │   ├── services/         # Business logic
-│   │   ├── aptosService.js  # Aptos blockchain service
+│   │   ├── aptosService.js  # Aptos blockchain service with move-agent-kit
 │   │   └── assistantService.js  # AI assistant service
+│   ├── examples/         # Example usage
 │   └── utils/            # Utility functions
 │
 ├── .babelrc              # Babel configuration
@@ -86,26 +89,41 @@ npm run dev
 npm start
 ```
 
-### Using the AptosService
+### Using the AptosService with move-agent-kit
+
+The `aptosService` provides enhanced blockchain functionality using the move-agent-kit library.
 
 ```javascript
 import { aptosService } from './services/aptosService.js';
+
+// Initialize agent with private key
+await aptosService.initializeAgent(privateKey);
 
 // Create a new wallet
 const wallet = await aptosService.createUserWallet();
 console.log('New wallet address:', wallet.address);
 
-// Check balance
+// Check APT balance
 const balance = await aptosService.getAccountBalance(wallet.address);
 console.log('Balance:', balance);
 
-// Send a transaction
-const txHash = await aptosService.sendTransaction(
-  fromAddress,
-  toAddress,
-  '1000000' // Amount in octas
+// Check specific token balance
+const tokenBalance = await aptosService.getTokenBalance(
+  wallet.address,
+  '0x1::aptos_coin::AptosCoin'
+);
+console.log('Token Balance:', tokenBalance);
+
+// Transfer tokens
+const txHash = await aptosService.transferTokens(
+  recipientAddress,
+  0.1 // amount in APT
 );
 console.log('Transaction submitted:', txHash);
+
+// Get transaction details
+const txDetails = await aptosService.getTransactionDetails(txHash);
+console.log('Transaction details:', txDetails);
 
 // Verify a signature
 const isValid = await aptosService.verifySignature(
@@ -114,6 +132,14 @@ const isValid = await aptosService.verifySignature(
   signature
 );
 console.log('Signature valid:', isValid);
+```
+
+### Running the Example
+
+To run the example script demonstrating AptosService functionality:
+
+```bash
+node src/examples/aptosExample.js
 ```
 
 ## API Endpoints
