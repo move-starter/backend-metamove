@@ -7,38 +7,36 @@ import {
     removeAgent,
     getUserAgents,
     removeUserAgents,
-    updateAgentName
+    updateAgentName,
+    cleanupInactiveAgents
 } from '../controllers/agentController.js';
+import { rateLimiter, validateRequest } from '../middleware/securityMiddleware.js';
 
 const router = express.Router();
 
 /**
  * Agent routes for interacting with the Aptos blockchain via move-agent-kit
- * Supports multiple agents per user
+ * Supports multiple agents per user with enhanced security
  */
 
-// Create a new agent for a user
-router.post('/initialize', initializeAgent);
+// Security middleware for all routes
+router.use(rateLimiter);
 
-// Process a message with a specific agent
-router.post('/message', processMessage);
+// Agent creation and message processing
+router.post('/initialize', validateRequest('body', ['privateKey', 'userId']), initializeAgent);
+router.post('/message', validateRequest('body', ['agentId', 'messages']), processMessage);
 
-// Get all agents for a specific user
-router.get('/user/:userId', getUserAgents);
+// User agent management
+router.get('/user/:userId', validateRequest('params', ['userId']), getUserAgents);
+router.delete('/user/:userId', validateRequest('params', ['userId']), removeUserAgents);
 
-// Get status of a specific agent
-router.get('/:agentId', getAgentStatus);
+// Agent-specific operations
+router.get('/:agentId', validateRequest('params', ['agentId']), getAgentStatus);
+router.put('/:agentId/name', validateRequest('params, body', ['agentId', 'name']), updateAgentName);
+router.delete('/:agentId', validateRequest('params', ['agentId']), removeAgent);
 
-// Update an agent's name
-router.put('/:agentId/name', updateAgentName);
-
-// Remove a specific agent
-router.delete('/:agentId', removeAgent);
-
-// Remove all agents for a specific user
-router.delete('/user/:userId', removeUserAgents);
-
-// Get all agents (admin endpoint)
+// Admin endpoints (should have authentication middleware in production)
 router.get('/admin/all', getAllAgents);
+router.post('/admin/cleanup', cleanupInactiveAgents);
 
 export default router; 
