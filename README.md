@@ -13,7 +13,8 @@ A robust backend service for blockchain integration with the Aptos network, prov
 - **Token Transfers**: Transfer tokens to other addresses
 - **Transaction History**: Retrieve transaction details
 - **AI Agent Integration**: Interact with the blockchain through an AI-powered agent using LangChain
-- **User-Specific Agents**: Each user has their own dedicated blockchain agent
+- **Multi-Agent Support**: Each user can have multiple specialized agents
+- **Agent Management**: Name, organize, and manage different agents for various purposes
 
 ## Prerequisites
 
@@ -138,29 +139,33 @@ console.log('Signature valid:', isValid);
 
 ### Using the AI Agent API
 
-The agent API allows for interacting with the blockchain through natural language, with each user having their own dedicated agent:
+The agent API allows for interacting with the blockchain through natural language, with users able to create multiple specialized agents:
 
 ```javascript
-// Initialize the agent with a private key for a specific user
-const response = await fetch('http://localhost:3001/api/agent/initialize', {
+// Create a new agent for a user with a specific name
+const createResponse = await fetch('http://localhost:3001/api/agent/initialize', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({ 
     privateKey: 'your-private-key',
-    userId: 'unique-user-id'
+    userId: 'unique-user-id',
+    name: 'Wallet Tracker Agent'
   })
 });
 
-// Send a message to the user's agent
+// Get the agentId from the response
+const { data: { agentId } } = await createResponse.json();
+
+// Send a message to a specific agent
 const messageResponse = await fetch('http://localhost:3001/api/agent/message', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json'
   },
   body: JSON.stringify({
-    userId: 'unique-user-id',
+    agentId: 'specific-agent-id',
     messages: [
       {
         role: 'user',
@@ -170,18 +175,34 @@ const messageResponse = await fetch('http://localhost:3001/api/agent/message', {
   })
 });
 
-// Check agent status for a specific user
-const statusResponse = await fetch('http://localhost:3001/api/agent/status/unique-user-id', {
+// Get all agents for a specific user
+const userAgentsResponse = await fetch('http://localhost:3001/api/agent/user/unique-user-id', {
   method: 'GET'
 });
 
-// List all user agents (admin function)
-const allAgentsResponse = await fetch('http://localhost:3001/api/agent/admin/all', {
+// Get details of a specific agent
+const agentDetailsResponse = await fetch('http://localhost:3001/api/agent/specific-agent-id', {
   method: 'GET'
 });
 
-// Remove a user's agent
-const removeResponse = await fetch('http://localhost:3001/api/agent/unique-user-id', {
+// Rename an agent
+const renameResponse = await fetch('http://localhost:3001/api/agent/specific-agent-id/name', {
+  method: 'PUT',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'New Agent Name'
+  })
+});
+
+// Remove a specific agent
+const removeAgentResponse = await fetch('http://localhost:3001/api/agent/specific-agent-id', {
+  method: 'DELETE'
+});
+
+// Remove all agents for a user
+const removeAllResponse = await fetch('http://localhost:3001/api/agent/user/unique-user-id', {
   method: 'DELETE'
 });
 ```
@@ -210,11 +231,14 @@ node src/examples/agentExample.js
 - `POST /api/wallet/transfer` - Send a transaction
 
 ### Agent API
-- `POST /api/agent/initialize` - Initialize the blockchain agent with a private key for a specific user
-- `POST /api/agent/message` - Send a message to the user's AI agent and get a response
-- `GET /api/agent/status/:userId` - Check the status of a user's agent
-- `GET /api/agent/admin/all` - List all user agents (admin function)
-- `DELETE /api/agent/:userId` - Remove an agent for a specific user
+- `POST /api/agent/initialize` - Create a new agent for a user with private key
+- `POST /api/agent/message` - Send a message to a specific agent
+- `GET /api/agent/user/:userId` - Get all agents for a specific user
+- `GET /api/agent/:agentId` - Get details of a specific agent
+- `PUT /api/agent/:agentId/name` - Update an agent's name
+- `DELETE /api/agent/:agentId` - Remove a specific agent
+- `DELETE /api/agent/user/:userId` - Remove all agents for a user
+- `GET /api/agent/admin/all` - List all agents (admin function)
 
 ### Assistant
 - `POST /api/assistant/create` - Create a new AI assistant
@@ -282,4 +306,4 @@ pm2 start ecosystem.config.js
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details. 
+This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.

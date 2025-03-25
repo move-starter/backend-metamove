@@ -5,19 +5,20 @@ import { v4 as uuidv4 } from 'uuid';
 dotenv.config();
 
 /**
- * Example script demonstrating the usage of the User-Specific Agent API
+ * Example script demonstrating the usage of the Multi-Agent API
+ * Shows how a single user can have multiple agents
  */
 async function runAgentExample() {
     try {
-        console.log('=== MetaMove User-Specific Agent API Example ===');
+        console.log('=== MetaMove Multi-Agent API Example ===');
         const API_URL = 'http://localhost:3001/api/agent';
         
         // Generate a unique user ID for this example
         const userId = uuidv4();
         console.log(`Generated test user ID: ${userId}`);
         
-        // Example 1: Initialize Agent with Private Key for a specific user
-        console.log('\n=== Initializing Agent for User ===');
+        // Example 1: Create first agent for the user with a specific name
+        console.log('\n=== Creating First Agent for User ===');
         // Replace with your private key for testing
         const privateKey = process.env.MOCK_PRIVATE_KEY;
         
@@ -26,31 +27,60 @@ async function runAgentExample() {
             return;
         }
         
-        const initResponse = await fetch(`${API_URL}/initialize`, {
+        const firstAgentResponse = await fetch(`${API_URL}/initialize`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ 
                 privateKey,
-                userId 
+                userId,
+                name: "Primary Agent"
             })
         });
         
-        const initResult = await initResponse.json();
-        console.log('Agent initialization result:', initResult);
+        const firstAgentResult = await firstAgentResponse.json();
+        console.log('First agent creation result:', firstAgentResult);
+        const firstAgentId = firstAgentResult.data.agentId;
         
-        // Example 2: Check Agent Status for the user
-        console.log('\n=== Checking Agent Status for User ===');
-        const statusResponse = await fetch(`${API_URL}/status/${userId}`, {
+        // Example 2: Create a second agent for the same user
+        console.log('\n=== Creating Second Agent for Same User ===');
+        const secondAgentResponse = await fetch(`${API_URL}/initialize`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                privateKey,
+                userId,
+                name: "Secondary Agent"
+            })
+        });
+        
+        const secondAgentResult = await secondAgentResponse.json();
+        console.log('Second agent creation result:', secondAgentResult);
+        const secondAgentId = secondAgentResult.data.agentId;
+        
+        // Example 3: List all agents for the user
+        console.log('\n=== Listing All Agents for User ===');
+        const userAgentsResponse = await fetch(`${API_URL}/user/${userId}`, {
             method: 'GET'
         });
         
-        const statusResult = await statusResponse.json();
-        console.log('Agent status for user:', statusResult);
+        const userAgentsResult = await userAgentsResponse.json();
+        console.log('User agents:', userAgentsResult);
         
-        // Example 3: Process a message with the Agent for the user
-        console.log('\n=== Processing Message with User Agent ===');
+        // Example 4: Get status of specific agent
+        console.log('\n=== Getting Status of First Agent ===');
+        const agentStatusResponse = await fetch(`${API_URL}/${firstAgentId}`, {
+            method: 'GET'
+        });
+        
+        const agentStatusResult = await agentStatusResponse.json();
+        console.log('First agent status:', agentStatusResult);
+        
+        // Example 5: Send a message to the first agent
+        console.log('\n=== Sending Message to First Agent ===');
         const messages = [
             {
                 role: 'user',
@@ -65,86 +95,116 @@ async function runAgentExample() {
             },
             body: JSON.stringify({ 
                 messages,
-                userId 
+                agentId: firstAgentId
             })
         });
         
         const messageResult = await messageResponse.json();
-        console.log('Agent response for user:', messageResult);
+        console.log('First agent response:', messageResult);
         
-        // Example 4: Process another message (continuing the conversation)
-        console.log('\n=== Continuing Conversation for User ===');
-        const followupMessages = [
-            ...messages,
-            {
-                role: 'assistant',
-                content: messageResult.result.messages[0].content
-            },
+        // Example 6: Send a different message to the second agent
+        console.log('\n=== Sending Message to Second Agent ===');
+        const secondMessages = [
             {
                 role: 'user',
-                content: 'What is my APT balance?'
+                content: 'How much APT do I have?'
             }
         ];
         
-        const followupResponse = await fetch(`${API_URL}/message`, {
+        const secondMessageResponse = await fetch(`${API_URL}/message`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ 
-                messages: followupMessages,
-                userId 
+                messages: secondMessages,
+                agentId: secondAgentId
             })
         });
         
-        const followupResult = await followupResponse.json();
-        console.log('Agent follow-up response for user:', followupResult);
+        const secondMessageResult = await secondMessageResponse.json();
+        console.log('Second agent response:', secondMessageResult);
         
-        // Example 5: Create a second user agent to demonstrate multi-user support
-        console.log('\n=== Initializing Agent for Second User ===');
+        // Example 7: Rename the first agent
+        console.log('\n=== Renaming First Agent ===');
+        const renameResponse = await fetch(`${API_URL}/${firstAgentId}/name`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                name: "Wallet Explorer Agent"
+            })
+        });
+        
+        const renameResult = await renameResponse.json();
+        console.log('Rename result:', renameResult);
+        
+        // Example 8: Create a second user with their own agent
+        console.log('\n=== Creating Agent for Another User ===');
         const secondUserId = uuidv4();
-        console.log(`Generated second test user ID: ${secondUserId}`);
+        console.log(`Generated second user ID: ${secondUserId}`);
         
-        const secondInitResponse = await fetch(`${API_URL}/initialize`, {
+        const otherUserAgentResponse = await fetch(`${API_URL}/initialize`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ 
                 privateKey,
-                userId: secondUserId 
+                userId: secondUserId,
+                name: "Other User's Agent"
             })
         });
         
-        const secondInitResult = await secondInitResponse.json();
-        console.log('Second agent initialization result:', secondInitResult);
+        const otherUserAgentResult = await otherUserAgentResponse.json();
+        console.log('Other user agent creation result:', otherUserAgentResult);
+        const otherUserAgentId = otherUserAgentResult.data.agentId;
         
-        // Example 6: Get all agents (admin function)
-        console.log('\n=== Getting All User Agents ===');
+        // Example 9: Get all agents (admin function)
+        console.log('\n=== Getting All Agents (Admin) ===');
         const allAgentsResponse = await fetch(`${API_URL}/admin/all`, {
             method: 'GET'
         });
         
         const allAgentsResult = await allAgentsResponse.json();
-        console.log('All user agents:', allAgentsResult);
+        console.log('All agents:', allAgentsResult);
         
-        // Example 7: Remove an agent for a user
-        console.log('\n=== Removing Agent for Second User ===');
-        const removeResponse = await fetch(`${API_URL}/${secondUserId}`, {
+        // Example 10: Remove the second agent for the first user
+        console.log('\n=== Removing Second Agent ===');
+        const removeAgentResponse = await fetch(`${API_URL}/${secondAgentId}`, {
             method: 'DELETE'
         });
         
-        const removeResult = await removeResponse.json();
-        console.log('Agent removal result:', removeResult);
+        const removeAgentResult = await removeAgentResponse.json();
+        console.log('Remove agent result:', removeAgentResult);
         
-        // Example 8: Verify the agent was removed
-        console.log('\n=== Verifying Agent Removal ===');
-        const verifyResponse = await fetch(`${API_URL}/admin/all`, {
+        // Example 11: Check user agents after removal
+        console.log('\n=== Checking User Agents After Removal ===');
+        const checkAgentsResponse = await fetch(`${API_URL}/user/${userId}`, {
             method: 'GET'
         });
         
-        const verifyResult = await verifyResponse.json();
-        console.log('Updated user agents list:', verifyResult);
+        const checkAgentsResult = await checkAgentsResponse.json();
+        console.log('User agents after removal:', checkAgentsResult);
+        
+        // Example 12: Remove all agents for second user
+        console.log('\n=== Removing All Agents for Second User ===');
+        const removeUserAgentsResponse = await fetch(`${API_URL}/user/${secondUserId}`, {
+            method: 'DELETE'
+        });
+        
+        const removeUserAgentsResult = await removeUserAgentsResponse.json();
+        console.log('Remove user agents result:', removeUserAgentsResult);
+        
+        // Example 13: Final check of all agents
+        console.log('\n=== Final Check of All Agents ===');
+        const finalCheckResponse = await fetch(`${API_URL}/admin/all`, {
+            method: 'GET'
+        });
+        
+        const finalCheckResult = await finalCheckResponse.json();
+        console.log('Final agents list:', finalCheckResult);
         
         console.log('\n=== Example Complete ===');
     } catch (error) {

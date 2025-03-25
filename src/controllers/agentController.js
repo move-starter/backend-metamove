@@ -13,7 +13,7 @@ import { agentService } from '../services/agentService.js';
  */
 export const initializeAgent = async (req, res) => {
     try {
-        const { privateKey, userId } = req.body;
+        const { privateKey, userId, name } = req.body;
 
         if (!privateKey) {
             return res.status(400).json({ 
@@ -30,7 +30,7 @@ export const initializeAgent = async (req, res) => {
         }
 
         // Initialize user-specific agent
-        const result = await agentService.initializeUserAgent(userId, privateKey);
+        const result = await agentService.initializeUserAgent(userId, privateKey, name);
         
         return res.status(200).json({
             success: true,
@@ -54,7 +54,7 @@ export const initializeAgent = async (req, res) => {
  */
 export const processMessage = async (req, res) => {
     try {
-        const { messages, userId, privateKey, showIntermediateSteps = false } = req.body;
+        const { messages, agentId, userId, privateKey, showIntermediateSteps = false } = req.body;
 
         if (!messages || !Array.isArray(messages) || !messages.length) {
             return res.status(400).json({
@@ -63,21 +63,23 @@ export const processMessage = async (req, res) => {
             });
         }
 
-        if (!userId) {
+        // Check if we have an agentId
+        if (!agentId) {
             return res.status(400).json({
                 success: false,
-                message: 'User ID is required'
+                message: 'Agent ID is required'
             });
         }
 
-        // If privateKey is provided and agent not initialized, initialize it first
-        if (privateKey && !agentService.getUserAgentStatus(userId).initialized) {
+        // If privateKey is provided and agent not found, initialize it
+        if (privateKey && !agentService.getAgent(agentId) && userId) {
+            // This would create a new agent with the specified agentId
             await agentService.initializeUserAgent(userId, privateKey);
         }
 
         try {
-            // Process the message with the user's agent
-            const result = await agentService.processUserMessage(userId, messages, showIntermediateSteps);
+            // Process the message with the specified agent
+            const result = await agentService.processAgentMessage(agentId, messages, showIntermediateSteps);
 
             // For streaming response
             if (showIntermediateSteps && result.eventStream) {
@@ -112,11 +114,11 @@ export const processMessage = async (req, res) => {
                 result
             });
         } catch (error) {
-            // If agent not initialized, return specific error
-            if (error.message.includes('User agent not initialized')) {
-                return res.status(400).json({
+            // If agent not found, return specific error
+            if (error.message.includes('Agent not found')) {
+                return res.status(404).json({
                     success: false,
-                    message: 'Agent not initialized for this user. Please initialize with privateKey first.'
+                    message: 'Agent not found. Please initialize first.'
                 });
             }
             throw error;
@@ -131,12 +133,12 @@ export const processMessage = async (req, res) => {
 };
 
 /**
- * Get agent status for a specific user
+ * Get all agents for a specific user
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
- * @returns {Object} Response with agent status
+ * @returns {Object} Response with user's agents
  */
-export const getAgentStatus = async (req, res) => {
+export const getUserAgents = async (req, res) => {
     try {
         const { userId } = req.params;
         
@@ -147,7 +149,40 @@ export const getAgentStatus = async (req, res) => {
             });
         }
         
-        const status = agentService.getUserAgentStatus(userId);
+        const agents = agentService.getUserAgents(userId);
+        
+        return res.status(200).json({
+            success: true,
+            count: agents.length,
+            agents
+        });
+    } catch (error) {
+        console.error('Error getting user agents:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to get user agents'
+        });
+    }
+};
+
+/**
+ * Get agent status by ID
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} Response with agent status
+ */
+export const getAgentStatus = async (req, res) => {
+    try {
+        const { agentId } = req.params;
+        
+        if (!agentId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Agent ID is required'
+            });
+        }
+        
+        const status = agentService.getAgentStatus(agentId);
         
         return res.status(200).json({
             success: true,
@@ -163,16 +198,57 @@ export const getAgentStatus = async (req, res) => {
 };
 
 /**
- * Get all user agents (admin endpoint)
+ * Update an agent's name
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
- * @returns {Object} Response with all user agents
+ * @returns {Object} Response with updated agent
+ */
+export const updateAgentName = async (req, res) => {
+    try {
+        const { agentId } = req.params;
+        const { name } = req.body;
+        
+        if (!agentId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Agent ID is required'
+            });
+        }
+        
+        if (!name) {
+            return res.status(400).json({
+                success: false,
+                message: 'Name is required'
+            });
+        }
+        
+        const updatedAgent = agentService.updateAgentName(agentId, name);
+        
+        return res.status(200).json({
+            success: true,
+            message: 'Agent name updated successfully',
+            agent: updatedAgent
+        });
+    } catch (error) {
+        console.error('Error updating agent name:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to update agent name'
+        });
+    }
+};
+
+/**
+ * Get all agents (admin endpoint)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} Response with all agents
  */
 export const getAllAgents = async (req, res) => {
     try {
         // TODO: Add admin authentication check here
         
-        const agents = agentService.getAllUserAgents();
+        const agents = agentService.getAllAgents();
         
         return res.status(200).json({
             success: true,
@@ -189,12 +265,51 @@ export const getAllAgents = async (req, res) => {
 };
 
 /**
- * Remove an agent for a specific user
+ * Remove a specific agent
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  * @returns {Object} Response with removal status
  */
 export const removeAgent = async (req, res) => {
+    try {
+        const { agentId } = req.params;
+        
+        if (!agentId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Agent ID is required'
+            });
+        }
+        
+        const removed = agentService.removeAgent(agentId);
+        
+        if (removed) {
+            return res.status(200).json({
+                success: true,
+                message: `Agent ${agentId} removed successfully`
+            });
+        } else {
+            return res.status(404).json({
+                success: false,
+                message: `No agent found with ID ${agentId}`
+            });
+        }
+    } catch (error) {
+        console.error('Error removing agent:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to remove agent'
+        });
+    }
+};
+
+/**
+ * Remove all agents for a specific user
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} Response with removal status
+ */
+export const removeUserAgents = async (req, res) => {
     try {
         const { userId } = req.params;
         
@@ -205,24 +320,17 @@ export const removeAgent = async (req, res) => {
             });
         }
         
-        const removed = agentService.removeUserAgent(userId);
+        const removedCount = agentService.removeUserAgents(userId);
         
-        if (removed) {
-            return res.status(200).json({
-                success: true,
-                message: `Agent for user ${userId} removed successfully`
-            });
-        } else {
-            return res.status(404).json({
-                success: false,
-                message: `No agent found for user ${userId}`
-            });
-        }
+        return res.status(200).json({
+            success: true,
+            message: `Removed ${removedCount} agents for user ${userId}`
+        });
     } catch (error) {
-        console.error('Error removing agent:', error);
+        console.error('Error removing user agents:', error);
         return res.status(500).json({
             success: false,
-            message: error.message || 'Failed to remove agent'
+            message: error.message || 'Failed to remove user agents'
         });
     }
 }; 
