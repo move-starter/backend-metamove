@@ -137,6 +137,30 @@ export const assistantService = {
       console.error('Error fetching assistants by userAddress:', error);
       throw new Error('Could not fetch assistants');
     }
+  },
+
+  /**
+   * Verifies a signature using the Aptos blockchain
+   * @param {string} address - The account address
+   * @param {string} message - The message that was signed
+   * @param {string} signature - The signature to verify
+   * @returns {Promise<boolean>} - True if signature is valid
+   */
+  async verifySignature(address, message, signature) {
+    // Input validation
+    if (!address || !message || !signature) {
+      throw new Error('Missing required parameters');
+    }
+    
+    try {
+      // Implementation to verify signature
+      const { aptosService } = await import('./aptosService.js');
+      const isValid = await aptosService.verifySignature(address, message, signature);
+      return isValid;
+    } catch (error) {
+      console.error('Error verifying signature:', error);
+      return false;
+    }
   }
 };
 

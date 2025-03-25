@@ -1,6 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { connectDB } from './config/database.js';
 import assistantRoutes from './routes/assistantRoutes.js';
 import threadRoutes from './routes/threadRoutes.js';
@@ -10,12 +16,35 @@ import userRoutes from './routes/userRoutes.js';
 import conversationRoutes from './routes/conversationRoutes.js';
 import Web3 from 'web3';
 import { Assistant } from './models/Assistant.js';
-import mongoose from 'mongoose';
 import factoryABI from '../abi_Fectory_Bonding_Curve.json' assert { type: 'json' };
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cors());
+app.use(helmet());
+app.use(morgan('dev'));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use(limiter);
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });
 
 // Dynamic CORS configuration
 const allowedOrigins = [
@@ -41,7 +70,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
 
 // Define routes
 app.use('/api/assistants', assistantRoutes);
@@ -55,65 +83,67 @@ app.get('/test', (req, res) => {
 });
 
 // Function to set up event listener
-function setupEventListener() {
-  // Initialize web3 with a provider
-  const web3 = new Web3(new Web3.providers.WebsocketProvider(process.env.RPC_URL));
+async function setupEventListener() {
+  try {
+    // Blockchain event listener setup
+    const web3 = new Web3(process.env.ETHEREUM_RPC_URL);
+    const contract = new web3.eth.Contract(factoryABI, process.env.FACTORY_CONTRACT_ADDRESS);
 
-  // console.log("Web3 initialized", web3);
+    contract.events.AssistantCreated()
+      .on('data', async (event) => {
+        try {
+          console.log('AssistantCreated event detected:', event.returnValues);
+          // Process the event data
+          const { assistantId, creator, tokenAddress } = event.returnValues;
+          
+          // Example: Save to database
+          await Assistant.create({
+            blockchainId: assistantId,
+            creator,
+            tokenAddress
+          });
+          
+          console.log('New assistant saved to database');
+        } catch (error) {
+          console.error('Error processing event:', error);
+        }
+      })
+      .on('error', (error) => {
+        console.error('Event listener error:', error);
+      });
 
-  
-  const factoryAddress = process.env.FACTORY_ADDRESS;
-
-  console.log("Factory Address:", factoryAddress);
-
-  // Create a contract instance
-  const contract = new web3.eth.Contract(factoryABI, factoryAddress);
-
-  // Listen for ContractDeployed events
-  contract.events.ContractDeployed({ fromBlock: 'latest' }, async (error, event) => {
-    if (error) {
-      console.error('Error listening to event:', error);
-      return;
-    }
-
-    console.log("Event fired!");
-    console.log("Token Address:", event.returnValues.contractAddress);
-    console.log("Project ID:", event.returnValues.projectId);
-
-    const assistantId = await getAssistantIdForProject(event.returnValues.projectId);
-    console.log("Retrieved Assistant ID:", assistantId);
-
-    if (assistantId) {
-      console.log(`Token address ${event.returnValues.contractAddress} belongs to assistant ${assistantId}`);
-      try {
-        const result = await Assistant.findByIdAndUpdate(assistantId, { tokenAddress: event.returnValues.contractAddress });
-        console.log("Token address and projectId saved to MongoDB", result);
-      } catch (error) {
-        console.error("Error saving token address to MongoDB:", error);
-      }
-    } else {
-      console.error("Could not find assistant for project ID:", event.returnValues.projectId);
-    }
-  });
+    console.log('Event listener set up successfully');
+  } catch (error) {
+    console.error('Error setting up event listener:', error);
+  }
 }
 
-// Function to get the assistantId for a given projectId
-async function getAssistantIdForProject(projectId) {
-  const assistant = await Assistant.findOne({ projectId });
-  return assistant ? assistant._id : null;
-}
-
-// Connect to the database
-connectDB().then(() => {
-  console.log('Database connected');
-});
-
+// Set up the event listener
 setupEventListener(); 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-// Call the function to set up the event listener
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to MetaMove API' });
 });
 
-// Error handling middleware
-app.use(errorHandler);
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ 
+    error: 'Server error', 
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV}`);
+});
+
+export default app;

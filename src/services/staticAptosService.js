@@ -1,13 +1,11 @@
-import { Injectable } from '@nestjs/common';
 import { Account, Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk';
 import { AgentRuntime, LocalSigner } from 'move-agent-kit-fullstack';
 
-@Injectable()
 export class StaticAptosService {
-  public async getStaticResponse(walletAddress: string) {
-    const signer = new LocalSigner({} as Account);
+  async getStaticResponse(walletAddress) {
+    const signer = new LocalSigner({});
 
-    console.log('signer ===========>>>>>>>>>>', signer);
+    console.log('signer ===========>>>>>>>>>>',  signer);
 
     const aptos = new Aptos(
       new AptosConfig({
@@ -17,7 +15,7 @@ export class StaticAptosService {
 
     const agent = new AgentRuntime(signer, aptos);
 
-    console.log('agent ===========>>>>>>>>>>', agent);
+    console.log('agent ===========>>>>>>>>>>',  agent);
 
     const responses = [];
 
@@ -27,11 +25,11 @@ export class StaticAptosService {
 
     switch (actionType) {
       case 'aptos_balance': {
-        const args = values as [string];
+        const args = values;
         const mint = args[0];
 
         if (mint) {
-          let balance: number;
+          let balance;
           if (mint.split('::').length !== 3) {
             const balances = await agent.aptos.getCurrentFungibleAssetBalances({
               options: {
@@ -47,7 +45,7 @@ export class StaticAptosService {
             balance = balances[0].amount ?? 0;
           } else {
             balance = await agent.aptos.getAccountCoinAmount({
-              accountAddress: walletAddress as string,
+              accountAddress: walletAddress,
               coinType: 'module::name::type',
             });
           }
@@ -57,7 +55,7 @@ export class StaticAptosService {
           responses.push(balance);
         } else {
           const balance = await agent.aptos.getAccountAPTAmount({
-            accountAddress: walletAddress as string,
+            accountAddress: walletAddress,
           });
 
           responses.push(balance);
@@ -69,4 +67,7 @@ export class StaticAptosService {
 
     return responses;
   }
-} 
+}
+
+// Export a singleton instance
+export const staticAptosService = new StaticAptosService(); 

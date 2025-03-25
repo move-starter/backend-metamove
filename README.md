@@ -1,34 +1,34 @@
-# MetaMove - Aptos Blockchain Integration
+# MetaMove Backend
 
-MetaMove is a blockchain integration service that provides seamless interaction with the Aptos blockchain network. This service handles wallet creation, transaction management, and signature verification.
+A robust backend service for blockchain integration with the Aptos network, providing wallet management, transaction handling, and signature verification.
 
 ## Features
 
-- Wallet Creation and Management
-- Transaction Building and Submission
-- Signature Verification
-- Balance Checking
-- Secure Private Key Storage
+- **Blockchain Integration**: Seamless interaction with Aptos blockchain
+- **Wallet Management**: Create and manage blockchain wallets
+- **Transaction Processing**: Build, sign, and submit transactions
+- **Signature Verification**: Verify signatures using cryptographic methods
+- **Account Management**: Check balances and manage user accounts
+- **Secure Key Storage**: Secure handling of private keys
 
 ## Prerequisites
 
-- Node.js (v14 or higher)
-- npm or yarn
+- Node.js (v16 or higher)
+- MongoDB
 - Aptos Devnet Account (for testing)
+- OpenAI API Key (for AI assistant features)
 
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/sagar/backend-metamove.git
-cd metamove
+git clone https://github.com/yourusername/metamove.git
+cd metamove/backend
 ```
 
 2. Install dependencies:
 ```bash
 npm install
-# or
-yarn install
 ```
 
 3. Set up environment variables:
@@ -37,92 +37,150 @@ cp .env.example .env
 # Edit .env with your configuration
 ```
 
+4. Required environment variables:
+```
+PORT=3001
+MONGODB_URI=mongodb://localhost:27017/metamove
+JWT_SECRET=your_jwt_secret
+APTOS_NODE_URL=https://fullnode.devnet.aptoslabs.com/v1
+OPENAI_API_KEY=your_openai_api_key
+# For development only
+NODE_ENV=development
+MOCK_PRIVATE_KEY=your_dev_private_key_here
+```
+
+## Project Structure
+
+```
+backend/
+│
+├── src/                  # Source files
+│   ├── config/           # Configuration files
+│   ├── controllers/      # Request controllers
+│   ├── middleware/       # Express middleware
+│   ├── models/           # MongoDB models
+│   ├── routes/           # API routes
+│   ├── services/         # Business logic
+│   │   ├── aptosService.js  # Aptos blockchain service
+│   │   └── assistantService.js  # AI assistant service
+│   └── utils/            # Utility functions
+│
+├── .babelrc              # Babel configuration
+├── .env.example          # Example environment variables
+├── .eslintrc.js          # ESLint configuration
+├── .gitignore            # Git ignore file
+├── jest.config.cjs       # Jest configuration
+├── package.json          # Package information
+└── README.md             # This file
+```
+
 ## Usage
 
-### Initialize the Service
+### Starting the Server
+
+```bash
+# Development mode
+npm run dev
+
+# Production mode
+npm start
+```
+
+### Using the AptosService
 
 ```javascript
-import { aptosService } from './services/aptosService';
+import { aptosService } from './services/aptosService.js';
 
 // Create a new wallet
-const { address, privateKey } = await aptosService.createUserWallet();
+const wallet = await aptosService.createUserWallet();
+console.log('New wallet address:', wallet.address);
 
-// Get account balance
-const balance = await aptosService.getAccountBalance(address);
+// Check balance
+const balance = await aptosService.getAccountBalance(wallet.address);
+console.log('Balance:', balance);
 
 // Send a transaction
 const txHash = await aptosService.sendTransaction(
-    fromAddress,
-    toAddress,
-    amount
+  fromAddress,
+  toAddress,
+  '1000000' // Amount in octas
 );
+console.log('Transaction submitted:', txHash);
 
 // Verify a signature
 const isValid = await aptosService.verifySignature(
-    address,
-    message,
-    signature
+  address,
+  message,
+  signature
 );
+console.log('Signature valid:', isValid);
 ```
 
-### Example Implementation
+## API Endpoints
 
-```javascript
-// Example of creating a wallet and sending a transaction
-async function example() {
-    try {
-        // Create a new wallet
-        const { address, privateKey } = await aptosService.createUserWallet();
-        console.log('New wallet created:', address);
+### Authentication
+- `POST /api/auth/register` - Register a new user
+- `POST /api/auth/login` - Login a user
 
-        // Get initial balance
-        const balance = await aptosService.getAccountBalance(address);
-        console.log('Initial balance:', balance);
+### Wallet Management
+- `POST /api/wallet/create` - Create a new wallet
+- `GET /api/wallet/balance/:address` - Get wallet balance
+- `POST /api/wallet/transfer` - Send a transaction
 
-        // Send a transaction
-        const txHash = await aptosService.sendTransaction(
-            address,
-            '0x123...', // recipient address
-            '100000000' // amount in octas
-        );
-        console.log('Transaction sent:', txHash);
-
-    } catch (error) {
-        console.error('Error:', error);
-    }
-}
-```
+### Assistant
+- `POST /api/assistant/create` - Create a new AI assistant
+- `GET /api/assistant/list` - List available assistants
+- `GET /api/assistant/:id` - Get assistant details
 
 ## Security Considerations
 
-1. Private Key Storage:
-   - Implement secure storage for private keys
-   - Never store private keys in plain text
-   - Use encryption for private key storage
-   - Consider using hardware security modules (HSM) for production
+### Private Key Management
+- Private keys are never stored in plain text
+- Development mode uses environment variables (not for production)
+- Production should use a secure key management system
 
-2. Transaction Security:
-   - Always verify transaction details before signing
-   - Implement proper error handling
-   - Use appropriate gas limits
-   - Monitor transaction status
+### API Security
+- Rate limiting for all API endpoints
+- JWT authentication for protected routes
+- Input validation for all requests
+- HTTPS enforcement in production
 
 ## Development
 
-### Running Tests
-
+### Testing
 ```bash
+# Run all tests
 npm test
-# or
-yarn test
+
+# Run specific tests
+npm test -- --testPathPattern=aptosService
 ```
 
-### Building the Project
-
+### Linting
 ```bash
-npm run build
-# or
-yarn build
+# Lint code
+npm run lint
+
+# Fix linting issues
+npm run lint -- --fix
+```
+
+### Formatting
+```bash
+# Format code
+npm run format
+```
+
+## Deployment
+
+For production deployment:
+
+1. Set NODE_ENV to production in .env
+2. Ensure all secrets are properly configured
+3. Use a process manager like PM2:
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.js
 ```
 
 ## Contributing
@@ -135,10 +193,4 @@ yarn build
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [Aptos Blockchain](https://aptos.dev/)
-- [Aptos TypeScript SDK](https://github.com/aptos-labs/aptos-ts-sdk)
-- [MetaMove Team](https://github.com/yourusername/metamove) 
+This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details. 
