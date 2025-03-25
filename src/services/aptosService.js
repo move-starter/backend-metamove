@@ -6,10 +6,16 @@ import {
     Account,
     Ed25519PublicKey,
     Ed25519Signature,
-    PrivateKey
+    PrivateKey,
+    PrivateKeyVariants
 } from '@aptos-labs/ts-sdk';
-import { AgentRuntime, LocalSigner } from 'move-agent-kit';
+import { AgentRuntime, LocalSigner, createAptosTools } from 'move-agent-kit';
 import dotenv from 'dotenv';
+// Add imports for LangChain
+import { ChatAnthropic } from '@langchain/anthropic';
+import { MemorySaver } from '@langchain/langgraph';
+import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { AIMessage, HumanMessage, ChatMessage } from '@langchain/core/messages';
 
 dotenv.config();
 
@@ -26,6 +32,7 @@ class AptosService {
         this.config = new AptosConfig({ network: Network.MAINNET });
         this.aptos = new Aptos(this.config);
         this.agent = null;
+        this.llmAgent = null;
     }
 
     /**
@@ -49,6 +56,124 @@ class AptosService {
         } catch (error) {
             console.error('Error initializing agent:', error);
             throw new Error(`Failed to initialize agent: ${error.message}`);
+        }
+    }
+
+    /**
+     * Initialize the LLM Agent with move-agent-kit
+     * @returns {Promise<Object>} The initialized LLM agent
+     */
+    async initializeLLMAgent() {
+        try {
+            // Check if we have API key
+            if (!process.env.ANTHROPIC_API_KEY) {
+                throw new Error('Missing ANTHROPIC_API_KEY environment variable');
+            }
+
+            // Check if agent is initialized
+            if (!this.agent) {
+                throw new Error('Agent not initialized. Call initializeAgent first.');
+            }
+
+            // Initialize LLM
+            const llm = new ChatAnthropic({
+                temperature: 0.7,
+                model: "claude-3-5-sonnet-latest",
+                apiKey: process.env.ANTHROPIC_API_KEY,
+            });
+
+            // Create tools from agent
+            const tools = createAptosTools(this.agent);
+            const memory = new MemorySaver();
+
+            // Create React agent
+            this.llmAgent = createReactAgent({
+                llm,
+                tools,
+                checkpointSaver: memory,
+                messageModifier: `
+                    You are a helpful agent that can interact onchain using the Aptos Agent Kit. You are
+                    empowered to interact onchain using your tools. If you ever need funds, you can request them from the
+                    faucet. If not, you can provide your wallet details and request funds from the user. If there is a 5XX
+                    (internal) HTTP error code, ask the user to try again later. If someone asks you to do something you
+                    can't do with your currently available tools, you must say so, and encourage them to implement it
+                    themselves using the Aptos Agent Kit, recommend they go to https://www.aptosagentkit.xyz for more information. Be
+                    concise and helpful with your responses. Refrain from restating your tools' descriptions unless it is explicitly requested.
+
+                    The response also contains token/token[] which contains the name and address of the token and the decimals.
+                    WHEN YOU RETURN ANY TOKEN AMOUNTS, RETURN THEM ACCORDING TO THE DECIMALS OF THE TOKEN.
+                `,
+            });
+
+            return this.llmAgent;
+        } catch (error) {
+            console.error('Error initializing LLM agent:', error);
+            throw new Error(`Failed to initialize LLM agent: ${error.message}`);
+        }
+    }
+
+    /**
+     * Process a user message with the LLM agent
+     * @param {Array} messages - Array of message objects with role and content
+     * @param {boolean} showIntermediateSteps - Whether to show intermediate steps
+     * @returns {Promise<Object>} Agent response
+     */
+    async processAgentMessage(messages, showIntermediateSteps = false) {
+        try {
+            // Check if LLM agent is initialized
+            if (!this.llmAgent) {
+                await this.initializeLLMAgent();
+            }
+
+            // Format messages for LangChain if needed
+            const formattedMessages = messages.map(msg => {
+                if (msg.role === 'user') {
+                    return new HumanMessage(msg.content);
+                } else if (msg.role === 'assistant') {
+                    return new AIMessage(msg.content);
+                } else {
+                    return new ChatMessage(msg.content, msg.role);
+                }
+            });
+
+            if (!showIntermediateSteps) {
+                // Invoke the agent with messages
+                const result = await this.llmAgent.invoke({ messages: formattedMessages });
+                
+                // Format the response
+                return {
+                    messages: result.messages.map(msg => {
+                        if (msg._getType() === 'human') {
+                            return { content: msg.content, role: 'user' };
+                        } else if (msg._getType() === 'ai') {
+                            return {
+                                content: msg.content,
+                                role: 'assistant',
+                                tool_calls: msg.tool_calls,
+                            };
+                        } else {
+                            return { content: msg.content, role: msg._getType() };
+                        }
+                    }),
+                };
+            } else {
+                // Get event stream with intermediate steps
+                const eventStream = await this.llmAgent.streamEvents(
+                    { messages: formattedMessages },
+                    {
+                        version: "v2",
+                        configurable: {
+                            thread_id: "Aptos Agent Kit!",
+                        },
+                    }
+                );
+
+                // Process and return stream
+                return { eventStream };
+            }
+        } catch (error) {
+            console.error('Error processing agent message:', error);
+            throw new Error(`Failed to process agent message: ${error.message}`);
         }
     }
 

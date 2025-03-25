@@ -12,6 +12,7 @@ A robust backend service for blockchain integration with the Aptos network, prov
 - **Secure Key Storage**: Secure handling of private keys
 - **Token Transfers**: Transfer tokens to other addresses
 - **Transaction History**: Retrieve transaction details
+- **AI Agent Integration**: Interact with the blockchain through an AI-powered agent using LangChain
 
 ## Prerequisites
 
@@ -134,12 +135,52 @@ const isValid = await aptosService.verifySignature(
 console.log('Signature valid:', isValid);
 ```
 
-### Running the Example
+### Using the AI Agent API
 
-To run the example script demonstrating AptosService functionality:
+The agent API allows for interacting with the blockchain through natural language:
+
+```javascript
+// Initialize the agent with a private key
+const response = await fetch('http://localhost:3001/api/agent/initialize', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({ privateKey: 'your-private-key' })
+});
+
+// Send a message to the agent
+const messageResponse = await fetch('http://localhost:3001/api/agent/message', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    messages: [
+      {
+        role: 'user',
+        content: 'What is my wallet balance?'
+      }
+    ]
+  })
+});
+
+// Check agent status
+const statusResponse = await fetch('http://localhost:3001/api/agent/status', {
+  method: 'GET'
+});
+```
+
+### Running the Examples
+
+To run the example scripts demonstrating AptosService functionality:
 
 ```bash
+# Run the basic Aptos example
 node src/examples/aptosExample.js
+
+# Run the Agent API example
+node src/examples/agentExample.js
 ```
 
 ## API Endpoints
@@ -152,6 +193,11 @@ node src/examples/aptosExample.js
 - `POST /api/wallet/create` - Create a new wallet
 - `GET /api/wallet/balance/:address` - Get wallet balance
 - `POST /api/wallet/transfer` - Send a transaction
+
+### Agent API
+- `POST /api/agent/initialize` - Initialize the blockchain agent with a private key
+- `POST /api/agent/message` - Send a message to the AI agent and get a response
+- `GET /api/agent/status` - Check the status of the agent
 
 ### Assistant
 - `POST /api/assistant/create` - Create a new AI assistant
